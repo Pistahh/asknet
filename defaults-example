@@ -1,0 +1,16 @@
+DEF_HOSTNAME="falcon"
+DEF_DOMAIN1=subdom.dom.zu
+DEF_DOMAIN2=dom.zu
+EX_DOMAIN1=falcon
+EX_DOMAIN2=falcon.other
+EX_DOMAIN3=falcon.else.dom.zu
+DEF_NET1=10.0
+DEF_NET2=10
+DEF_IP="10.0.0.41"
+EX_NET1=1.2
+EX_NET2=1.2.3
+EX_NET3=1.2.3.4
+DEF_NETMASK="255.255.255.0"
+DEF_DNS="10.0.0.1 10.0.0.254"
+DEF_DNS_SEARCH="subdom.dom.zu dom.zu"
+REBOOT_CMD="shutdown -r now"

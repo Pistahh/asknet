@@ -1,0 +1,312 @@
+#!/bin/bash
+
+DEF_HOSTNAME=""
+DEF_DOMAIN1=""
+DEF_DOMAIN2=""
+EX_DOMAIN1=""
+EX_DOMAIN2=""
+EX_DOMAIN3=""
+DEF_NET1=""
+DEF_NET2=""
+DEF_IP=""
+EX_NET1=""
+EX_NET2=""
+EX_NET3=""
+DEF_NETMASK=""
+DEF_DNS=""
+DEF_DNS_SEARCH=""
+REBOOT_CMD=""
+
+[[ -f /etc/default/asknet ]] && source /etc/default/asknet
+
+YE="\\e[33m\\e[1m"
+NORM="\\e[0m"
+
+function get_hostname {
+    printf "Hostname examples:\n"
+    printf "   %-25s %-25s\n" INPUT RESULT
+    printf "   %-25s %-25s\n" ---------- ----------
+    printf "   %-25s %-25s %s\n" "${EX_DOMAIN1}" "${EX_DOMAIN1}.${DEF_DOMAIN1}" "# no dot in the input"
+    printf "   %-25s %-25s %s\n" "${EX_DOMAIN2}" "${EX_DOMAIN2}.${DEF_DOMAIN2}" "# dot in the input"
+    printf "   %-25s %-25s %s\n" "${EX_DOMAIN3}." "${EX_DOMAIN3}" "# dot at the end of the input"
+
+    ANS_HOSTNAME=""
+    while [[ $ANS_HOSTNAME == "" ]]; do
+        printf "\nHostname [$DEF_HOSTNAME]: "
+        read hname
+
+        if [[ $hname =~ (.*)\.$ ]]; then
+            ANS_HOSTNAME=${BASH_REMATCH[1]}
+        elif [[ $hname =~ \. ]]; then
+            ANS_HOSTNAME=${hname}.${DEF_DOMAIN2}
+        elif [[ $hname == "" ]]; then
+            ANS_HOSTNAME=$DEF_HOSTNAME
+        else
+            ANS_HOSTNAME=${hname}.${DEF_DOMAIN1}
+        fi
+    done
+    DEF_HOSTNAME=$ANS_HOSTNAME
+}
+
+function match_valid {
+    idx=$1
+    while [[ $idx -gt 0 ]]; do
+        n=${BASH_REMATCH[$idx]}
+        if [[ ( $n -lt 0) || ( $n -gt 255 ) ]]; then
+            printf "invalid component, $n must be in 1-255.\n"
+            return 1
+        fi
+        ((idx=idx-1))
+    done
+    return 0
+}
+
+function get_ip {
+    printf "IP examples:\n"
+    printf "   %-25s %-25s\n" INPUT RESULT
+    printf "   %-25s %-25s\n" ---------- ----------
+    printf "   %-25s %-25s # 2 numbers - in ${DEF_NET1}. network\n" "${EX_NET1}" "${DEF_NET1}.${EX_NET1}"
+    printf "   %-25s %-25s # 3 numbers - in ${DEF_NET2}. network\n" "${EX_NET2}" "${DEF_NET2}.${EX_NET2}"
+    printf "   %-25s %-25s # 4 numbers - exact IP\n" "${EX_NET3}" "${EX_NET3}"
+    printf "   %-25s %-25s\n" dhcp DHCP
+    printf "   %-25s %-25s\n" x "Back to previous question"
+
+    ANS_IP=""
+    while [[ $ANS_IP == "" ]]; do
+        printf "\nIP [$DEF_IP]: "
+        read ip
+        if [[ "$ip" == "" ]]; then
+            ip=$DEF_IP
+        fi
+
+        if [[ $ip == "dhcp" || $ip == "x" ]]; then
+            ANS_IP=$ip
+        elif [[ $ip =~ ([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            match_valid 4 && ANS_IP=$ip
+        elif [[ $ip =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            match_valid 3 && ANS_IP=10.${ip}
+        elif [[ $ip =~ ([0-9]+)\.([0-9]+) ]]; then
+            match_valid 2 && ANS_IP=10.71.${ip}
+        else
+            printf "Invalid input\n"
+        fi
+    done
+    [[ $ANS_IP != x ]] && DEF_IP=$ANS_IP
+}
+
+function get_netmask {
+    ANS_NETMASK=""
+    while [[ $ANS_NETMASK == "" ]]; do
+        printf "\nNetmask (x=back): [$DEF_NETMASK]:"
+        read nm
+        if [[ $nm == "x" ]]; then
+            ANS_NETMASK=$nm
+        elif [[ $nm == "" ]]; then
+            ANS_NETMASK=$DEF_NETMASK
+        elif [[ $nm =~ ([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            match_valid 4 && ANS_NETMASK=$nm
+        else
+            printf "Invalid input\n"
+        fi
+    done
+    [[ $ANS_NETMASK != x ]] && DEF_NETMASK=$ANS_NETMASK
+}
+
+function get_gw {
+    defgw=""
+    if [[ $ANS_IP =~ ([0-9]+\.[0-9]+\.[0-9]+)\.([0-9]+) ]]; then
+        defgw=${BASH_REMATCH[1]}.1
+    fi
+
+    ANS_GW=""
+    while [[ $ANS_GW == "" ]]; do
+        printf "\nGateway (x=back): [$defgw]: "
+        read gw
+        if [[ $gw == "x" ]]; then
+            ANS_GW=$gw
+        elif [[ $gw == "" ]]; then
+            ANS_GW=$defgw
+        elif [[ $gw =~ ([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            match_valid 4 && ANS_GW=$gw
+        else
+            printf "Invalid input\n"
+        fi
+    done
+}
+
+function get_dns {
+    ANS_DNS=""
+    while [[ $ANS_DNS == "" ]]; do
+        printf "\nDNS servers (x=back): [$DEF_DNS]: "
+        read dns
+        if [[ $dns == "x" ]]; then
+            ANS_DNS=$dns
+        elif [[ $dns == "" ]]; then
+            ANS_DNS=$DEF_DNS
+        else
+            ANS_DNS=$dns
+        fi
+    done
+    [[ $ANS_DNS != x ]] && DEF_DNS=$ANS_DNS
+}
+
+function get_dns_search {
+    ANS_DNS_SEARCH=""
+    while [[ $ANS_DNS_SEARCH == "" ]]; do
+        printf "\nDNS search domains (x=back): [$DEF_DNS_SEARCH]: "
+        read sd
+        if [[ $sd == "x" ]]; then
+            ANS_DNS_SEARCH=$sd
+        elif [[ $sd == "" ]]; then
+            ANS_DNS_SEARCH=$DEF_DNS_SEARCH
+        else
+            ANS_DNS_SEARCH=$sd
+        fi
+    done
+    [[ $ANS_DNS_SEARCH != x ]] && DEF_DNS_SEARCH=$ANS_DNS_SEARCH
+}
+
+function get_answers {
+    Q=hostname
+    while [[ $Q != done ]]; do
+        case $Q in
+            hostname)
+                get_hostname
+                printf "\nGoing with hostname=${YE}${ANS_HOSTNAME}${NORM}\n\n"
+                Q=ip
+                ;;
+            ip)
+                get_ip
+                if [[ $ANS_IP == "x" ]]; then
+                    Q=hostname
+                else
+                    printf "\nGoing with IP=${YE}${ANS_IP}${NORM}\n\n"
+                    if [[ $ANS_IP == dhcp ]]; then
+                        Q=final
+                    else
+                        Q=netmask
+                    fi
+                fi
+                ;;
+            netmask)
+                get_netmask
+                if [[ $ANS_NETMASK == "x" ]]; then
+                    Q=ip
+                else
+                    printf "\nGoing with netmask=${YE}${ANS_NETMASK}${NORM}\n\n"
+                    Q=gw
+                fi
+                ;;
+            gw)
+                get_gw
+                if [[ $ANS_GW == "x" ]]; then
+                    Q=netmask
+                else
+                    printf "\nGoing with gateway=${YE}${ANS_GW}${NORM}\n\n"
+                    Q=dns
+                fi
+                ;;
+            dns)
+                get_dns
+                if [[ $ANS_DNS == "x" ]]; then
+                    Q=gw
+                else
+                    printf "\nGoing with DNS=${YE}${ANS_DNS}${NORM}\n\n"
+                    Q=dnssearch
+                fi
+                ;;
+            dnssearch)
+                get_dns_search
+                if [[ $ANS_DNS_SEARCH == "x" ]]; then
+                    Q=dns
+                else
+                    printf "\nGoing with DNS search=${YE}${ANS_DNS_SEARCH}${NORM}\n\n"
+                    Q=final
+                fi
+                ;;
+            final)
+                printf "\n\n"
+                printf "    Hostname:   ${YE}$ANS_HOSTNAME${NORM}\n"
+                if [[ $ANS_IP == dhcp ]]; then
+                    printf "    IP/Netmask/Gateway/DNS: ${YE}DHCP provided${NORM}\n"
+                else
+                    printf "    IP:         ${YE}$ANS_IP${NORM}\n"
+                    printf "    Netmask:    ${YE}$ANS_NETMASK${NORM}\n"
+                    printf "    Gateway:    ${YE}$ANS_GW${NORM}\n"
+                    printf "    DNS:        ${YE}$ANS_DNS${NORM}\n"
+                    printf "    DNS search: ${YE}$ANS_DNS_SEARCH${NORM}\n\n"
+                fi
+                printf "All ok? (x=back) [yes]: "
+                read finalans
+                case $finalans in
+                    x) if [[ $ANS_IP == dhcp ]]; then
+                           Q=ip
+                       else
+                           Q=dnssearch
+                       fi ;;
+                    y*) Q=done ;;
+                    Y*) Q=done ;;
+                    "") Q=done ;;
+                esac
+                ;;
+        esac
+    done
+
+    ANS_HOSTNAME_SHORT=${ANS_HOSTNAME%%.*}
+    ANS_DNSES=$(printf "$ANS_DNS"|sed 's/ \+/\\nnameserver /g;s/^/nameserver /mg')
+}
+
+function create_file {
+    SRC="$TMPLDIR/$1"
+    DST="$ROOT$2"
+
+    mkdir -p $(dirname $DST)
+    rm -f "$DST"
+    printf "Creating $DST\n"
+    sed "s/%ANS_HOSTNAME%/$ANS_HOSTNAME/g;
+         s/%ANS_HOSTNAME_SHORT%/$ANS_HOSTNAME_SHORT/g;
+         s/%ANS_IP%/$ANS_IP/g;
+         s/%ANS_NETMASK%/$ANS_NETMASK/g;
+         s/%ANS_GW%/$ANS_GW/g;
+         s/%ANS_DNS%/$ANS_DNS/g;
+         s/%ANS_DNSES%/$ANS_DNSES/g;
+         s/%ANS_DNS_SEARCH%/$ANS_DNS_SEARCH/g;" <$SRC >$DST
+}
+
+MYDIR=$(dirname $(readlink -f $0))
+
+if [[ "$MYDIR" =~ ^/usr/sbin ]]; then
+    ROOT=""
+    TMPLDIR=/usr/share/asknet/templates
+else
+    TMPLDIR=$MYDIR/templates
+    ROOT=/tmp/asknet-init
+    mkdir -p $ROOT
+fi
+
+skip=1
+[[ "$1" == "-f" ]] && skip=0
+[[ ! -f $ROOT/etc/hostname || "$(<$ROOT/etc/hostname)" == "__INIT__" ]] && skip=0
+if [[ $skip == 1 ]]; then
+    printf "Skipping network setup interview\n"
+    exit 0
+fi
+
+printf "$0: Using templates from '$TMPLDIR' root is '$ROOT'\n\n"
+
+get_answers
+
+if [[ "$ANS_IP" == dhcp ]]; then
+    create_file interfaces-dhcp.tmpl /etc/network/interfaces
+    create_file hosts-dhcp.tmpl  /etc/hosts
+    create_file hostname.tmpl /etc/hostname
+else
+    create_file interfaces-static.tmpl /etc/network/interfaces
+    create_file resolv.conf.tmpl /etc/resolv.conf
+    create_file hosts.tmpl  /etc/hosts
+    create_file hostname.tmpl /etc/hostname
+fi
+printf "${YE}Rebooting in 5 seconds, press Ctrl-C to abort${NORM}"
+sleep 5
+printf "\n"
+$REBOOT_CMD

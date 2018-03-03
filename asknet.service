@@ -1,0 +1,16 @@
+[Unit]
+Description=Asks network settings for unconfigured machines
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+TimeoutSec=0
+RemainAfterExit=yes
+ExecStart=/usr/sbin/asknet-init
+StandardInput=tty-force
+StandardOutput=inherit
+StandardError=inherit
+
+[Install]
+WantedBy=multi-user.target
